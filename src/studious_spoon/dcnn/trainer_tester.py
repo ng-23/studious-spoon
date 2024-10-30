@@ -196,6 +196,21 @@ def get_args_parser():
     
     return parser
 
+def gen_default_dataloader_config():
+    return {
+        'batch_size':32,
+        'shuffle':False,
+        'num_workers':0,
+        'pin_memory':True,
+        }
+
+def gen_default_transforms_config():
+    return {
+        'Resize':{'size':(224,224),},
+        'ToTensor':{},
+        'Normalize':{'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225],},
+        }
+
 def train_step(model, train_dataloader, optimizer, criterion, device, model_ema=None, model_ema_steps=1, averaging_method='micro', num_classes=None):
     model.train()
 
@@ -379,9 +394,15 @@ def main(args:argparse.Namespace):
         json.dump(vars(args), f, indent=4)
 
     print('Making dataset transforms...')
-    train_dataset_transforms = utils.make_transforms_pipeline(None if args.train_transforms_config is None else json.load(open(args.train_transforms_config)))
-    val_dataset_transforms = utils.make_transforms_pipeline(None if args.val_transforms_config is None else json.load(open(args.val_transforms_config)))
-    test_dataset_transforms = utils.make_transforms_pipeline(None if args.test_transforms_config is None else json.load(open(args.test_transforms_config)))
+    train_dataset_transforms = utils.make_transforms_pipeline(
+        gen_default_transforms_config() if args.train_transforms_config is None else json.load(open(args.train_transforms_config)),
+        )
+    val_dataset_transforms = utils.make_transforms_pipeline(
+        gen_default_transforms_config() if args.val_transforms_config is None else json.load(open(args.val_transforms_config)),
+        )
+    test_dataset_transforms = utils.make_transforms_pipeline(
+        gen_default_transforms_config() if args.test_transforms_config is None else json.load(open(args.test_transforms_config)),
+        )
 
     print('Loading dataset...')
     full_dataset = utils.load_dataset(args.dataset_path)
@@ -401,9 +422,18 @@ def main(args:argparse.Namespace):
     print(f'Dataset has {num_classes} classes')
     
     print('Making dataloaders...')
-    train_dataloader = utils.make_dataloader(train_dataset, None if args.train_dataloader_config is None else json.load(open(args.train_dataloader_config)))
-    val_dataloader = utils.make_dataloader(val_dataset, None if args.val_dataloader_config is None else json.load(open(args.val_dataloader_config)))
-    test_dataloader = utils.make_dataloader(test_dataset, None if args.test_dataloader_config is None else json.load(open(args.test_dataloader_config)))
+    train_dataloader = utils.make_dataloader(
+        train_dataset, 
+        gen_default_dataloader_config() if args.train_dataloader_config is None else json.load(open(args.train_dataloader_config)),
+        )
+    val_dataloader = utils.make_dataloader(
+        val_dataset, 
+        gen_default_dataloader_config() if args.val_dataloader_config is None else json.load(open(args.val_dataloader_config)),
+        )
+    test_dataloader = utils.make_dataloader(
+        test_dataset, 
+        gen_default_dataloader_config() if args.test_dataloader_config is None else json.load(open(args.test_dataloader_config)),
+        )
     print(f'Samples in train dataset: {len(train_dataloader.dataset)}')
     print(f'Samples in val dataset: {len(val_dataloader.dataset)}')
     print(f'Samples in test dataset: {len(test_dataloader.dataset)}')
@@ -440,10 +470,12 @@ def main(args:argparse.Namespace):
     lr_scheduler = None
     if args.lr_scheduler is not None:
         print(f'Creating {args.lr_scheduler} learning rate scheduler...')
+        if args.lr_scheduler_config is None:
+            raise Exception('Must supply a learning rate scheduler config if a learning rate scheduler is specified')
         lr_scheduler = utils.make_lr_scheduler(
             optimizer, 
             args.lr_scheduler, 
-            None if args.lr_scheduler_config is None else json.load(open(args.lr_scheduler_config)),
+            json.load(open(args.lr_scheduler_config)),
             )
 
     early_stopper = None
