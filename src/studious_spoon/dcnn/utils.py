@@ -50,19 +50,9 @@ class EarlyStopper:
     
 def encode_str_list(str_list):
     return [s.encode('utf-8') for s in str_list]
-    
-def gen_default_transforms_config():
-    return {
-        'Resize':{'size':(224,224),},
-        'ToTensor':{},
-        'Normalize':{'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225],},
-        }
 
-def make_transforms_pipeline(transforms_config:dict|None=None):
+def make_transforms_pipeline(transforms_config:dict):
     pipeline = []
-
-    if transforms_config is None:
-        transforms_config = gen_default_transforms_config()
         
     for transform_name in transforms_config:
         if not hasattr(transforms, transform_name):
@@ -86,17 +76,9 @@ def split_dataset(dataset:torchvision.datasets.ImageFolder, train_ratio:float=0.
     
     return torch.utils.data.random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
 
-def gen_default_dataloader_config():
-    return {
-        'batch_size':32,
-        'shuffle':False,
-        'num_workers':0,
-        'pin_memory':True,
-        }
-
 def make_dataloader(dataset, dataloader_config:dict|None=None):
     if dataloader_config is None:
-        dataloader_config = gen_default_dataloader_config()
+        dataloader_config = {} # use dataloader's defaults
 
     dataloader_config = validate_config(dataloader_config, 'DataLoader')
 
@@ -116,11 +98,8 @@ def make_optimizer(model_params, optimizer:str, optimizer_config:dict|None=None)
 
     return optim_class(model_params, **optimizer_config)
 
-def make_lr_scheduler(optimizer, lr_scheduler:str, lr_scheduler_config:dict|None=None):
+def make_lr_scheduler(optimizer, lr_scheduler:str, lr_scheduler_config:dict):
     lr_scheduler = lr_scheduler.lower()
-
-    if lr_scheduler_config is None:
-        lr_scheduler_config = {} # use learning rate scheduler's defaults
 
     if lr_scheduler not in SUPPORTED_LR_SCHEDULERS:
         raise Exception(f'Unknown/unsupported learning rate scheduler {lr_scheduler}. Supported learning rate schedulers are {list(SUPPORTED_LR_SCHEDULERS.keys())}')
