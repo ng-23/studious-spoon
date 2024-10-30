@@ -48,7 +48,7 @@ class ResizeTransformSchema(Schema):
     
     interpolation = fields.String(
         load_default=InterpolationMode.BILINEAR.value, 
-        validate=validate.OneOf(InterpolationMode._member_names_),
+        validate=validate.OneOf([member_name.lower() for member_name in InterpolationMode._member_names_]),
         )
     
     @pre_load(pass_many=False)
@@ -56,7 +56,7 @@ class ResizeTransformSchema(Schema):
         # TODO: kinda an ugly hack...is there a better way?
         self.interps_mapping = {
             'nearest':InterpolationMode.NEAREST,
-            'nearest-exact':InterpolationMode.NEAREST_EXACT,
+            'nearest_exact':InterpolationMode.NEAREST_EXACT,
             'bilinear':InterpolationMode.BILINEAR,
             'bicubic':InterpolationMode.BICUBIC,
             'box':InterpolationMode.BOX,
@@ -92,7 +92,7 @@ class NormalizeTransformSchema(Schema):
     @validates_schema(pass_many=False)
     def validate_eq_lens(self, data, many, **kwargs):
         if len(data['mean']) != len(data['std']):
-            raise ValidationError('Mean and standard deviation lists much have same number of channels (length)')
+            raise ValidationError('Mean and standard deviation lists must have same number of channels (length)')
 
 @register_schema('TransformsPipeline')
 class TransformsPipelineConfigSchema(Schema):
@@ -184,8 +184,17 @@ class ModelEMAConfigSchema(Schema):
 def validate_config(config:dict, schema_name:str):
     if schema_name not in registered_schemas:
         raise Exception(f'Cannot validate supplied config, no such schema {schema_name} exists to validate against')
-    
     schema = registered_schemas[schema_name]()
 
     return schema.load(config)
+
+def validate_search_space(search_space:dict, schema_name:str):
+    if schema_name not in registered_schemas:
+        raise Exception(f'Cannot validate supplied search space, no such schema {schema_name} exists to validate against')
+    schema = registered_schemas[schema_name]
+
+    # search space is simply a config where each field is list of possible values
+    search_space_schema = Schema.from_dict({field_name:fields.List(schema.fields[field_name]) for field_name in schema.fields})()
+
+    return search_space_schema.load(search_space)
     
