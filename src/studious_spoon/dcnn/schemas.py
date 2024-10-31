@@ -194,7 +194,7 @@ def validate_search_space(search_space:dict, schema_name:str):
     schema = registered_schemas[schema_name]
 
     # search space is simply a config where each field is list of possible values
-    search_space_schema = Schema.from_dict({field_name:fields.List(schema.fields[field_name]) for field_name in schema.fields})()
+    search_space_schema = Schema.from_dict({field_name:fields.List(schema._declared_fields[field_name]) for field_name in schema._declared_fields})()
 
     return search_space_schema.load(search_space)
     
