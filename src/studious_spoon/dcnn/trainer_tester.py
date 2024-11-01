@@ -211,7 +211,7 @@ def gen_default_transforms_config():
         'Normalize':{'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225],},
         }
 
-def train_step(model, train_dataloader, optimizer, criterion, device, model_ema=None, model_ema_steps=1, averaging_method='micro', num_classes=None):
+def train_step(model, train_dataloader, optimizer, criterion, device, model_ema=None, model_ema_steps=1, averaging_method='micro', num_classes:int|None=None):
     model.train()
 
     step_metrics = {'acc':[], 'recall':[], 'precision':[], 'f1':[], 'loss':[]}
@@ -256,7 +256,7 @@ def train_step(model, train_dataloader, optimizer, criterion, device, model_ema=
 
     return pd.DataFrame.from_dict(step_metrics)
 
-def val_step(model, val_dataloader, criterion, device, averaging_method='micro', num_classes=None):
+def val_step(model, val_dataloader, criterion, device, averaging_method='micro', num_classes:int|None=None):
     model.eval()
 
     step_metrics = {'acc':[], 'recall':[], 'precision':[], 'f1':[], 'loss':[]}
@@ -280,7 +280,7 @@ def val_step(model, val_dataloader, criterion, device, averaging_method='micro',
 
     return pd.DataFrame.from_dict(step_metrics)
 
-def test(model, test_dataloader, device, averaging_method='micro', num_classes=None):
+def test(model, test_dataloader, device, averaging_method='micro', num_classes:int|None=None):
     model.eval()
 
     metrics = {'acc':[], 'recall':[], 'precision':[], 'f1':[]}
@@ -307,7 +307,7 @@ def train_loop(epochs:int, model, train_dataloader, val_dataloader, criterion, o
 
     checkpoints_dir_path = 'checkpoints'
     if output_dir:
-        checkpoints_dir_path = os.path.join(args.output_dir, checkpoints_dir_path)
+        checkpoints_dir_path = os.path.join(output_dir, checkpoints_dir_path)
     os.makedirs(checkpoints_dir_path, exist_ok=True)
 
     for epoch in range(epochs):
