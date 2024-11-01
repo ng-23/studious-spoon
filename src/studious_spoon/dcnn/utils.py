@@ -125,7 +125,7 @@ def make_early_stopper(early_stopper_config:dict|None=None):
 
     return EarlyStopper(**early_stopper_config)
 
-def calc_metrics(preds, targets, average='micro', num_classes:int|None=None, ):
+def calc_metrics(preds, targets, average='micro', num_classes:int|None=None):
     metrics = {}
 
     acc = multiclass_accuracy(preds, targets, average=average, num_classes=num_classes).item()
