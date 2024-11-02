@@ -5,15 +5,11 @@ import torch
 import time
 import utils
 import torchvision
-import numpy as np
-import pandas as pd
 import torch.nn as nn
-from tqdm import tqdm
-from termcolor import colored, cprint
 from marshmallow import Schema, fields
 from schemas import ModelEMAConfigSchema, EarlyStopperConfigSchema, DataLoaderConfigSchema, registered_schemas, registered_schemas_types
 from sklearn.model_selection import ParameterGrid
-from trainer_tester import SUPPORTED_MODELS, train_loop, train_step, val_step, test, gen_default_transforms_config
+from trainer_tester import SUPPORTED_MODELS, train_loop, test, gen_default_transforms_config
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
@@ -221,9 +217,9 @@ class AutoParamGridSampleSchema():
             }
         
         for schema_name in registered_schemas_types:
-            if registered_schemas_types[schema_name] == 'optimizer' and schema_name.lower() == self.optim_name:
+            if registered_schemas_types[schema_name] == 'optimizer' and schema_name.lower() == utils.SUPPORTED_OPTIMIZERS[self.optim_name].__name__.lower():
                 schema_dict['optimizer_config'] = fields.Nested(registered_schemas[schema_name], required=True)
-            elif registered_schemas_types[schema_name] == 'lr_scheduler' and self.lr_sched_name and schema_name.lower() == self.lr_sched_name:
+            elif registered_schemas_types[schema_name] == 'lr_scheduler' and self.lr_sched_name and schema_name.lower() == utils.SUPPORTED_LR_SCHEDULERS[self.lr_sched_name].__name__.lower():
                 schema_dict['lr_scheduler_config'] = fields.Nested(registered_schemas[schema_name], required=True)
         if 'optimizer_config' not in schema_dict:
             raise Exception(f'No such optimizer schema exists for {self.optim_name} optimizer')
@@ -475,7 +471,7 @@ def main(args:argparse.Namespace):
 
     optim_search_space = {}
     if args.optimizer_search is not None:
-        print(f'Loding search space for {args.optimizer} optimizer...')
+        print(f'Loading search space for {args.optimizer} optimizer...')
         optim_search_space = json.load(open(args.optimizer_search))
     optim_search_space['lr'] = args.lr_search # only the optimizer needs the learning rate(s) directly
     search_spaces['optimizer_config'] = optim_search_space
