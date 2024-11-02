@@ -375,9 +375,7 @@ def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:s
             )
         
         print('Saving metrics...')
-        metrics_dir_path = 'metrics'
-        if output_dir:
-            metrics_dir_path = os.path.join(output_dir, metrics_dir_path)
+        metrics_dir_path = os.path.join(trial_dir_path, 'metrics')
         os.makedirs(metrics_dir_path, exist_ok=True)
         curr_time = int(time.time())
         train_metrics.to_csv(os.path.join(metrics_dir_path, f'train_metrics_{curr_time}.csv'), index=False)
@@ -520,6 +518,7 @@ def main(args:argparse.Namespace):
         lr_sched_name=args.lr_scheduler, 
         averaging_method=args.averaging_method, 
         num_classes=num_classes, 
+        plot_metrics=args.plot_metrics,
         output_dir=args.output_dir,
         )
 
