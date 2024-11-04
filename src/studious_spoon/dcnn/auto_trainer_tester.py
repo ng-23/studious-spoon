@@ -5,11 +5,12 @@ import torch
 import time
 import utils
 import torchvision
+import pandas as pd
 import torch.nn as nn
 from marshmallow import Schema, fields
-from schemas import ModelEMAConfigSchema, EarlyStopperConfigSchema, DataLoaderConfigSchema, registered_schemas, registered_schemas_types
 from sklearn.model_selection import ParameterGrid
 from trainer_tester import SUPPORTED_MODELS, train_loop, test, gen_default_transforms_config
+from schemas import ModelEMAConfigSchema, EarlyStopperConfigSchema, DataLoaderConfigSchema, registered_schemas, registered_schemas_types
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
@@ -174,7 +175,7 @@ def get_args_parser():
         default='micro', 
         help='Averaging method to use when calculating metrics',
         )
-    
+        
     parser.add_argument(
         '--plot-metrics', 
         action='store_true', 
@@ -191,6 +192,16 @@ def get_args_parser():
     return parser
 
 class AutoParamGridSampleSchema():
+    '''
+        Represents a sample in a parameter grid 
+        used during automated training/testing of DCNNs
+
+        Each sample is a dict mapping config names for various objects (model, optimizer, etc.)
+        to a dict mapping hyperparamter names to values
+
+        Ex: {'model':{'dropout':0.5,...}, 'optimizer':{'lr':0.1}, ...}
+        '''
+    
     def __init__(self, optim_name:str, lr_sched_name:str|None=None, incl_model_ema=False, incl_early_stopper=False):
         self.optim_name = optim_name
         self.lr_sched_name = lr_sched_name
@@ -199,16 +210,6 @@ class AutoParamGridSampleSchema():
         self.schema = self._make_schema()
 
     def _make_schema(self):
-        '''
-        Represents a sample in a parameter grid 
-        used during automated training/testing of DCNNs
-
-        Each sample is a dict mapping config names for various objects (model, optimizer, etc.)
-        to a dict mapping hyperparamter names to values
-
-        Ex: {'model':{'dropout':0.5}, 'optimizer':{'lr':0.1}, ...}
-        '''
-
         schema_dict = {
             'model_config':fields.Dict(keys=fields.Str, required=True),
             'train_dataloader_config':fields.Nested(DataLoaderConfigSchema, required=True),
@@ -236,6 +237,33 @@ class AutoParamGridSampleSchema():
 
     def validate(self, sample:dict):
         return self.schema.load(sample)
+    
+class AutoResults():
+    def __init__(self):
+        self._metrics_schema = self._make_metrics_schema()
+        self._results = {}
+
+    def _make_metrics_schema(self):
+        schema_dict = {
+            'acc':fields.Float(required=True),
+            'precision':fields.Float(required=True),
+            'recall':fields.Float(required=True),
+            'f1':fields.Float(required=True),
+            }
+        return Schema.from_dict(schema_dict)()
+
+    def add_result(self, name:str, result:dict):
+        if name in self._results:
+            raise Exception(f'Result for name {name} already exists')
+        
+        result = self._metrics_schema.load(result)
+
+        self._results[name] = result
+
+    def get_results(self, order_by_metric:str='', ascending=False) -> pd.DataFrame:
+        df = pd.DataFrame.from_dict(self._results, orient='index')
+        df.sort_values(by=[order_by_metric], ascending=ascending, inplace=True)
+        return df
     
 def gen_default_dataloader_search_space():
     return {
@@ -275,6 +303,8 @@ def make_param_grid(search_spaces:dict):
     return refined_grid
 
 def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:str, optim_name:str, epochs:int, device, lr_sched_name:str='', averaging_method='micro', num_classes:int|None=None, plot_metrics=False, output_dir=''):
+    auto_results = AutoResults()
+
     for i, sample in enumerate(param_grid):
         print(f'Trying sample {i+1} of {len(param_grid)} hyperparameter samples...')
 
@@ -283,7 +313,7 @@ def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:s
             optim_name, 
             lr_sched_name=lr_sched_name, 
             incl_model_ema='model_ema_config' in sample and len(sample['model_ema_config']) > 0, 
-            incl_early_stopper='early_stopper_config' in sample,
+            incl_early_stopper='early_stopper_config' in sample and len(sample['early_stopper_config']) > 0,
             )
         sample = sample_schema.validate(sample)
 
@@ -337,7 +367,7 @@ def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:s
             print('Creating early stopper...')
             early_stopper = utils.make_early_stopper(sample['early_stopper_config'])
 
-        # save jere any checkpoints/metrics for model trained on this sample of hyperparameters
+        # save here any checkpoints/metrics for model trained on this sample of hyperparameters
         trial_dir_path = f'trial{i+1}'
         if output_dir:
             trial_dir_path = os.path.join(output_dir, trial_dir_path)
@@ -409,6 +439,10 @@ def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:s
                 filename='loss_comparison', 
                 output_dir=metrics_dir_path,
                 )
+            
+        auto_results.add_result(f'trial{i+1}', test_metrics.to_dict(orient='index')[0])
+
+    return auto_results
 
 def main(args:argparse.Namespace):
     # save command line args to disk
@@ -506,7 +540,7 @@ def main(args:argparse.Namespace):
     param_grid = make_param_grid(search_spaces)
     
     print('Performing grid search over hyperparameters...')
-    grid_loop(
+    results = grid_loop(
         train_dataset, 
         val_dataset, 
         test_dataset, 
@@ -520,6 +554,13 @@ def main(args:argparse.Namespace):
         num_classes=num_classes, 
         plot_metrics=args.plot_metrics,
         output_dir=args.output_dir,
+        )
+    
+    print('Saving grid search results...')
+    results_filename = f'grid_search_res.csv'
+    results.get_results(order_by_metric='acc', ascending=False).to_csv(
+        os.path.join(args.output_dir, results_filename) if args.output_dir is not None else results_filename, 
+        index=True,
         )
 
 if __name__ == '__main__':
