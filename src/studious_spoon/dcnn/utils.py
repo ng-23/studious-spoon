@@ -48,7 +48,7 @@ class EarlyStopper:
         
         return False
     
-def encode_str_list(str_list):
+def encode_str_list(str_list:list[str]):
     return [s.encode('utf-8') for s in str_list]
 
 def make_transforms_pipeline(transforms_config:dict):
