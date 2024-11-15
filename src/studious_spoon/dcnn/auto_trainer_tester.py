@@ -1,9 +1,10 @@
-import argparse
 import os
+import hpo
+import time
 import json
 import torch
-import time
 import utils
+import argparse
 import torchvision
 import pandas as pd
 import torch.nn as nn
@@ -30,6 +31,14 @@ def get_args_parser():
         type=str, 
         choices=SUPPORTED_MODELS,
         help='DCNN model to train',
+        )
+
+    parser.add_argument(
+        '--search-algo', 
+        type=str, 
+        choices=['grid','rand'], 
+        default='grid', 
+        help='Search algorithm to use for hyperparameter finding',
         )
     
     parser.add_argument(
@@ -191,52 +200,41 @@ def get_args_parser():
     
     return parser
 
-class AutoParamGridSampleSchema():
+def make_grid_search_sample_schema(optim_name:str, lr_sched_name:str|None=None, incl_model_ema=False, incl_early_stopper=False):
     '''
-        Represents a sample in a parameter grid 
-        used during automated training/testing of DCNNs
+    Builds a Marshmallow Schema that represents a sample in a parameter grid for a grid search
+    used during automated training/testing of DCNNs
 
-        Each sample is a dict mapping config names for various objects (model, optimizer, etc.)
-        to a dict mapping hyperparamter names to values
+    Each sample is a dict mapping config names for various objects (model, optimizer, etc.)
+    to a dict mapping hyperparamter names to values
 
-        Ex: {'model':{'dropout':0.5,...}, 'optimizer':{'lr':0.1}, ...}
-        '''
-    
-    def __init__(self, optim_name:str, lr_sched_name:str|None=None, incl_model_ema=False, incl_early_stopper=False):
-        self.optim_name = optim_name
-        self.lr_sched_name = lr_sched_name
-        self.incl_model_ema = incl_model_ema
-        self.incl_early_stopper = incl_early_stopper
-        self.schema = self._make_schema()
+    Ex: {'model':{'dropout':0.5,...}, 'optimizer':{'lr':0.1}, ...}
+    '''
 
-    def _make_schema(self):
-        schema_dict = {
+    schema_dict = {
             'model_config':fields.Dict(keys=fields.Str, required=True),
             'train_dataloader_config':fields.Nested(DataLoaderConfigSchema, required=True),
             'val_dataloader_config':fields.Nested(DataLoaderConfigSchema, required=True),
             'test_dataloader_config':fields.Nested(DataLoaderConfigSchema, required=True),
             }
         
-        for schema_name in registered_schemas_types:
-            if registered_schemas_types[schema_name] == 'optimizer' and schema_name.lower() == utils.SUPPORTED_OPTIMIZERS[self.optim_name].__name__.lower():
-                schema_dict['optimizer_config'] = fields.Nested(registered_schemas[schema_name], required=True)
-            elif registered_schemas_types[schema_name] == 'lr_scheduler' and self.lr_sched_name and schema_name.lower() == utils.SUPPORTED_LR_SCHEDULERS[self.lr_sched_name].__name__.lower():
-                schema_dict['lr_scheduler_config'] = fields.Nested(registered_schemas[schema_name], required=True)
-        if 'optimizer_config' not in schema_dict:
-            raise Exception(f'No such optimizer schema exists for {self.optim_name} optimizer')
-        if self.lr_sched_name and 'lr_scheduler_config' not in schema_dict:
-            raise Exception(f'No such learning rate scheduler exists for {self.lr_sched_name} learning rate scheduler')
-            
-        if self.incl_model_ema:
-            schema_dict['model_ema_config'] = fields.Nested(ModelEMAConfigSchema, required=True)
+    for schema_name in registered_schemas_types:
+        if registered_schemas_types[schema_name] == 'optimizer' and schema_name.lower() == utils.SUPPORTED_OPTIMIZERS[optim_name].__name__.lower():
+            schema_dict['optimizer_config'] = fields.Nested(registered_schemas[schema_name], required=True)
+        elif registered_schemas_types[schema_name] == 'lr_scheduler' and lr_sched_name and schema_name.lower() == utils.SUPPORTED_LR_SCHEDULERS[lr_sched_name].__name__.lower():
+            schema_dict['lr_scheduler_config'] = fields.Nested(registered_schemas[schema_name], required=True)
+    if 'optimizer_config' not in schema_dict:
+        raise Exception(f'No such optimizer schema exists for {optim_name} optimizer')
+    if lr_sched_name and 'lr_scheduler_config' not in schema_dict:
+        raise Exception(f'No such learning rate scheduler exists for {lr_sched_name} learning rate scheduler')
         
-        if self.incl_early_stopper:
-            schema_dict['early_stopper_config'] = fields.Nested(EarlyStopperConfigSchema, required=True)
+    if incl_model_ema:
+        schema_dict['model_ema_config'] = fields.Nested(ModelEMAConfigSchema, required=True)
+    
+    if incl_early_stopper:
+        schema_dict['early_stopper_config'] = fields.Nested(EarlyStopperConfigSchema, required=True)
 
-        return Schema.from_dict(schema_dict)()
-
-    def validate(self, sample:dict):
-        return self.schema.load(sample)
+    return Schema.from_dict(schema_dict)()
     
 class AutoResults():
     def __init__(self):
@@ -273,49 +271,11 @@ def gen_default_dataloader_search_space():
         'pin_memory':[True],
         }
 
-def make_param_grid(search_spaces:dict):
-    param_grid = {}
-
-    # maps an unpacked param name (search space name + separator + param name) to a tuple of the search space and original param name
-    unpacked_param_names = {}
-
-    # unpack each search space dict
-    for search_space_name in search_spaces:
-        search_space = search_spaces[search_space_name]
-        for param in search_space:
-            param_name = f'{search_space_name}_{param}'
-            param_grid[param_name] = search_space[param]
-            unpacked_param_names[param_name] = (search_space_name, param)
-    
-    # generate all possible combinations of params
-    grid = list(ParameterGrid(param_grid))
-
-    # prepare new grid, where each sample has its params repacked into their associated dicts
-    refined_grid = [{search_space_name:{} for search_space_name in search_spaces} for _ in range(len(grid))]
-
-    # repack params back into their associated dicts
-    for i in range(len(grid)):
-        sample = grid[i]
-        for param in sample:
-            search_space_name, param_name = unpacked_param_names[param]
-            refined_grid[i][search_space_name][param_name] = sample[param]
-
-    return refined_grid
-
-def grid_loop(train_dataset, val_dataset, test_dataset, param_grid, model_name:str, optim_name:str, epochs:int, device, lr_sched_name:str='', averaging_method='micro', num_classes:int|None=None, plot_metrics=False, output_dir=''):
+def search_loop(train_dataset, val_dataset, test_dataset, searcher, model_name:str, optim_name:str, epochs:int, device, lr_sched_name:str='', averaging_method='micro', num_classes:int|None=None, plot_metrics=False, output_dir=''):
     auto_results = AutoResults()
 
-    for i, sample in enumerate(param_grid):
-        print(f'Trying sample {i+1} of {len(param_grid)} hyperparameter samples...')
-
-        # validate sample contains correct keys and valid values
-        sample_schema = AutoParamGridSampleSchema(
-            optim_name, 
-            lr_sched_name=lr_sched_name, 
-            incl_model_ema='model_ema_config' in sample and len(sample['model_ema_config']) > 0, 
-            incl_early_stopper='early_stopper_config' in sample and len(sample['early_stopper_config']) > 0,
-            )
-        sample = sample_schema.validate(sample)
+    for i, sample in enumerate(searcher):
+        print(f'Trying sample {i+1} of {len(searcher)} hyperparameter samples...')
 
         print(f'Making dataloaders...')
         train_dataloader = utils.make_dataloader(
@@ -536,15 +496,23 @@ def main(args:argparse.Namespace):
         early_stopper_search_space = json.load(open(args.early_stopper_search))
         search_spaces['early_stopper_config'] = early_stopper_search_space
 
-    print('Making parameter grid...')
-    param_grid = make_param_grid(search_spaces)
+    print(f'Making {args.search_algo} searcher...')
+    searcher = hpo.GridSearcher(
+        search_spaces, 
+        sample_schema=make_grid_search_sample_schema(
+            args.optimizer, 
+            lr_sched_name=args.lr_scheduler,
+            incl_model_ema=args.model_ema_search is not None,
+            incl_early_stopper=args.early_stopper_search is not None,
+            ),
+        )
     
-    print('Performing grid search over hyperparameters...')
-    results = grid_loop(
+    print(f'Performing {args.search_algo} search over hyperparameters...')
+    results = search_loop(
         train_dataset, 
         val_dataset, 
         test_dataset, 
-        param_grid, 
+        searcher, 
         args.model, 
         args.optimizer, 
         args.epochs, 
@@ -561,6 +529,7 @@ def main(args:argparse.Namespace):
     results.get_results(order_by_metric='acc', ascending=False).to_csv(
         os.path.join(args.output_dir, results_filename) if args.output_dir is not None else results_filename, 
         index=True,
+        index_label='trial',
         )
 
 if __name__ == '__main__':
