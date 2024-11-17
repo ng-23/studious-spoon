@@ -7,7 +7,7 @@ import torch.utils.data
 import torch.optim as optim
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
-from schemas import validate_config
+from studious_spoon.dcnn.schemas import validate_config
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 from torcheval.metrics.functional import multiclass_accuracy, multiclass_recall, multiclass_f1_score, multiclass_precision 
 

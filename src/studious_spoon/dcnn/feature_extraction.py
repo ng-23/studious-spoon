@@ -1,13 +1,13 @@
 import argparse
 import os
 import json
-import utils
 import torchvision
 import torch
 import h5py
 import numpy as np
 from tqdm import tqdm
 from sklearn.utils import shuffle
+from studious_spoon.dcnn import utils
 from torchvision.models.feature_extraction import create_feature_extractor
 
 def get_args_parser():

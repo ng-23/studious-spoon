@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from sklearn.utils import shuffle
-from feature_extraction import save_as_dataset
+from studious_spoon.dcnn.feature_extraction import save_as_dataset
 
 '''
 Script for performing fusion of features extracted from the same images

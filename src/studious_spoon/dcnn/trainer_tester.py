@@ -2,13 +2,13 @@ import os
 import json
 import time
 import torch
-import utils
 import argparse
 import torchvision
 import numpy as np
 import pandas as pd
 import torch.nn as nn
 from tqdm import tqdm
+from studious_spoon.dcnn import utils
 from termcolor import colored, cprint
 
 SUPPORTED_MODELS = {
