@@ -9,8 +9,7 @@ import torch.nn as nn
 from marshmallow import Schema, fields
 from studious_spoon.dcnn import utils
 from studious_spoon.dcnn import hpo
-from sklearn.model_selection import ParameterGrid
-from studious_spoon.dcnn.trainer_tester import SUPPORTED_MODELS, train_loop, test, gen_default_transforms_config
+from studious_spoon.runnables.dcnn_trainer import SUPPORTED_MODELS, train_loop, test, gen_default_transforms_config
 from studious_spoon.dcnn.schemas import ModelEMAConfigSchema, EarlyStopperConfigSchema, DataLoaderConfigSchema, registered_schemas, registered_schemas_types
 
 def get_args_parser():

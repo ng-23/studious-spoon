@@ -283,7 +283,14 @@ def main(args:argparse.Namespace):
         json.dump(vars(args), f, indent=4)
 
     print('Making dataset transforms...')
-    dataset_transforms = utils.make_dataset_transforms(None if args.transforms_config is None else json.load(open(args.transforms_config)))
+    transforms_config = {
+        'Resize':{'size':(224,224),},
+        'ToTensor':{},
+        'Normalize':{'mean':[0.485, 0.456, 0.406], 'std':[0.229, 0.224, 0.225],},
+        }
+    if args.transforms_config is not None:
+        transforms_config = json.load(open(args.transforms_config))
+    dataset_transforms = utils.make_transforms_pipeline(transforms_config)
 
     print('Loading dataset...')
     dataset = utils.load_dataset(args.dataset_path)
@@ -292,8 +299,12 @@ def main(args:argparse.Namespace):
     print(f'Dataset has {len(dataset)} samples of {num_classes} classes')
     
     print('Making dataloaders...')
-    dl_config = utils.gen_standard_dataloader_config()
-    dl_config['batch_size'] = args.batch_size; dl_config['num_workers'] = args.num_workers
+    dl_config = {
+        'batch_size':args.batch_size,
+        'shuffle':False,
+        'num_workers':args.num_workers,
+        'pin_memory':True,
+        }
     dataloader = utils.make_dataloader(dataset, dataloader_config=dl_config)
 
     print(f'Creating {args.model} model...')
