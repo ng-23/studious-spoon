@@ -1,10 +1,10 @@
-import argparse
 import os
 import json
-import torchvision
-import torch
 import h5py
+import torch
+import argparse
 import numpy as np
+import torchvision
 from tqdm import tqdm
 from sklearn.utils import shuffle
 from studious_spoon.dcnn import utils

@@ -5,11 +5,7 @@ import argparse
 import numpy as np
 from tqdm import tqdm
 from sklearn.utils import shuffle
-from studious_spoon.dcnn.feature_extraction import save_as_dataset
-
-'''
-Script for performing fusion of features extracted from the same images
-'''
+from studious_spoon.runnables.dcnn_feature_extractor import save_as_dataset
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
