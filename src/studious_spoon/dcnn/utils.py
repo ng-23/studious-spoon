@@ -7,7 +7,9 @@ import torch.utils.data
 import torch.optim as optim
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
+import torchvision.transforms.v2 as v2transforms
 from studious_spoon.dcnn.schemas import validate_config
+from torch.utils.data import default_collate
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 from torcheval.metrics.functional import multiclass_accuracy, multiclass_recall, multiclass_f1_score, multiclass_precision 
 
@@ -22,6 +24,11 @@ SUPPORTED_LR_SCHEDULERS = {
     'step_lr':optim.lr_scheduler.StepLR, 
     'exponential_lr':optim.lr_scheduler.ExponentialLR, 
     'cosineannealing_lr':optim.lr_scheduler.CosineAnnealingLR,
+    }
+
+SUPPORTED_COLLATE_FUNCS = {
+    'cutmix':v2transforms.CutMix,
+    'mixup':v2transforms.MixUp,
     }
 
 class EarlyStopper:
@@ -51,6 +58,17 @@ class EarlyStopper:
 def encode_str_list(str_list:list[str]):
     return [s.encode('utf-8') for s in str_list]
 
+def make_collate_func(func_name:str, num_classes:int):
+    if func_name not in SUPPORTED_COLLATE_FUNCS:
+        raise Exception(f'Unknown/unsupported collate function {func_name}')
+    
+    func = SUPPORTED_COLLATE_FUNCS[func_name](num_classes=num_classes)
+    
+    def collate(batch):
+        return func(*default_collate(batch))
+    
+    return collate
+
 def make_transforms_pipeline(transforms_config:dict):
     pipeline = []
         
@@ -76,13 +94,13 @@ def split_dataset(dataset:torchvision.datasets.ImageFolder, train_ratio:float=0.
     
     return torch.utils.data.random_split(dataset, [train_ratio, val_ratio, test_ratio], generator=generator)
 
-def make_dataloader(dataset, dataloader_config:dict|None=None):
+def make_dataloader(dataset, dataloader_config:dict|None=None, collate_func=None):
     if dataloader_config is None:
         dataloader_config = {} # use dataloader's defaults
 
     dataloader_config = validate_config(dataloader_config, 'DataLoader')
 
-    return torch.utils.data.DataLoader(dataset, **dataloader_config)
+    return torch.utils.data.DataLoader(dataset, **dataloader_config, collate_fn=collate_func)
 
 def make_optimizer(model_params, optimizer:str, optimizer_config:dict|None=None):
     optimizer = optimizer.lower()
