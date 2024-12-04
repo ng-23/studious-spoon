@@ -15,7 +15,7 @@ SUPPORTED_MODELS = {
     'vgg16','vgg19','alexnet','googlenet',
     'resnet18','efficientnet_b0','efficientnet_b1',
     'efficientnet_b2','efficientnet_b3','efficientnet_b4',
-    'efficientnet_b5','efficientnet_b6','efficientnet_b7',
+    'maxvit_t','vit_b_16','resnet34','resnet50',
     }
 
 def get_args_parser():
@@ -129,6 +129,14 @@ def get_args_parser():
         type=str, 
         default=None, 
         help='Path to JSON configuration file for test dataset transforms',
+        )
+    
+    parser.add_argument(
+        '--collate-func', 
+        type=str, 
+        choices=utils.SUPPORTED_COLLATE_FUNCS, 
+        default=None, 
+        help='Collation function to use.',
         )
     
     parser.add_argument(
@@ -420,11 +428,17 @@ def main(args:argparse.Namespace):
     num_classes = len(full_dataset.classes)
     del full_dataset
     print(f'Dataset has {num_classes} classes')
+
+    collate_func = None
+    if args.collate_func is not None:
+        print('Making collate function...')
+        collate_func = utils.make_collate_func(args.collate_func, num_classes)
     
     print('Making dataloaders...')
     train_dataloader = utils.make_dataloader(
         train_dataset, 
         gen_default_dataloader_config() if args.train_dataloader_config is None else json.load(open(args.train_dataloader_config)),
+        collate_func=collate_func,
         )
     val_dataloader = utils.make_dataloader(
         val_dataset, 

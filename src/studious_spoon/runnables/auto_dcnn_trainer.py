@@ -7,6 +7,7 @@ import torchvision
 import pandas as pd
 import torch.nn as nn
 from marshmallow import Schema, fields
+from torchvision.models import MaxVit_T_Weights
 from studious_spoon.dcnn import utils
 from studious_spoon.dcnn import hpo
 from studious_spoon.runnables.dcnn_trainer import SUPPORTED_MODELS, train_loop, test, gen_default_transforms_config
@@ -132,6 +133,14 @@ def get_args_parser():
         type=str, 
         default=None, 
         help='Path to JSON configuration file for test dataset transforms',
+        )
+    
+    parser.add_argument(
+        '--collate-func', 
+        type=str, 
+        choices=utils.SUPPORTED_COLLATE_FUNCS, 
+        default=None, 
+        help='Collation function to use.',
         )
     
     parser.add_argument(
@@ -270,7 +279,7 @@ def gen_default_dataloader_search_space():
         'pin_memory':[True],
         }
 
-def search_loop(train_dataset, val_dataset, test_dataset, searcher, model_name:str, optim_name:str, epochs:int, device, lr_sched_name:str='', averaging_method='micro', num_classes:int|None=None, plot_metrics=False, output_dir=''):
+def search_loop(train_dataset, val_dataset, test_dataset, searcher, model_name:str, optim_name:str, epochs:int, device, lr_sched_name:str='', averaging_method='micro', num_classes:int|None=None, collate_func=None, plot_metrics=False, output_dir=''):
     auto_results = AutoResults()
 
     for i, sample in enumerate(searcher):
@@ -280,10 +289,11 @@ def search_loop(train_dataset, val_dataset, test_dataset, searcher, model_name:s
         train_dataloader = utils.make_dataloader(
             train_dataset, 
             sample['train_dataloader_config'],
+            collate_func=collate_func,
             )
         val_dataloader = utils.make_dataloader(
             val_dataset,
-            sample['val_dataloader_config']
+            sample['val_dataloader_config'],
             )
         test_dataloader = utils.make_dataloader(
             test_dataset,
@@ -443,6 +453,11 @@ def main(args:argparse.Namespace):
     del full_dataset
     print(f'Dataset has {num_classes} classes')
 
+    collate_func = None
+    if args.collate_func is not None:
+        print('Making collate function...')
+        collate_func = utils.make_collate_func(args.collate_func, num_classes)
+
     # load any user-supplied search spaces from args
     print('Loading search spaces...')
     search_spaces = {}
@@ -519,6 +534,7 @@ def main(args:argparse.Namespace):
         lr_sched_name=args.lr_scheduler, 
         averaging_method=args.averaging_method, 
         num_classes=num_classes, 
+        collate_func=collate_func,
         plot_metrics=args.plot_metrics,
         output_dir=args.output_dir,
         )
